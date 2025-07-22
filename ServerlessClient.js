@@ -76,7 +76,9 @@ function ServerlessClient(userId, endpoint, serverlessId, pluginName, options = 
                             throw error;
                         } else {
                             // Fallback to generic HTTP error
-                            throw new Error(`HTTP error! status: ${response.status}`);
+                            const error = new Error(`HTTP error! status: ${response.status}`);
+                            error.statusCode = response.status;
+                            throw error;
                         }
                     }
                     return data;
