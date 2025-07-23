@@ -47,6 +47,7 @@ function ServerlessClient(userId, endpoint, serverlessId, pluginName, options = 
             name: commandName,
             pluginName,
             args: args,
+            serverlessId,
             options: options
         };
 
