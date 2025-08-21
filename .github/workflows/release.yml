@@ -1,0 +1,117 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - master
+      - main
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag (optional - auto-increments patch if not provided)'
+        required: false
+        type: string
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout serverlessClient repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          
+      - name: Install dependencies
+        run: npm install
+        
+      - name: Build with Vite
+        run: npm run build
+        
+      - name: Checkout releases repository
+        uses: actions/checkout@v4
+        with:
+          repository: OpenDSU/serverlessClient-releases
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: releases-repo
+          fetch-depth: 0
+          
+      - name: Determine version tag
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.release_tag }}" ]; then
+            VERSION="${{ github.event.inputs.release_tag }}"
+          else
+            cd releases-repo
+            LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+            echo "Last tag: $LAST_TAG"
+            
+            # Remove 'v' prefix if present and split version
+            VERSION_WITHOUT_V=${LAST_TAG#v}
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION_WITHOUT_V"
+            
+            # Increment patch version
+            PATCH=$((PATCH + 1))
+            VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+            cd ..
+          fi
+          
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Using version: $VERSION"
+          
+      - name: Copy bundle files to releases repo
+        run: |
+          cp dist/serverless-client.mjs releases-repo/serverless-client.mjs
+          cp dist/serverless-client.umd.js releases-repo/serverless-client.umd.js
+          
+      - name: Configure Git
+        working-directory: releases-repo
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          
+      - name: Commit and push bundle files
+        working-directory: releases-repo
+        run: |
+          git add serverless-client.mjs serverless-client.umd.js
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Release ${{ steps.version.outputs.VERSION }}"
+            git push origin main || git push origin master
+          fi
+          
+      - name: Create GitHub Release
+        working-directory: releases-repo
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get the commit SHA for the release
+          COMMIT_SHA=$(git rev-parse HEAD)
+          
+          # Create release notes
+          RELEASE_NOTES="## Release ${{ steps.version.outputs.VERSION }}
+          
+          Built from serverlessClient commit: ${{ github.sha }}
+          
+          ### Bundle Files
+          - \`serverless-client.mjs\` - ES Module format
+          - \`serverless-client.umd.js\` - UMD format
+          
+          ### Installation
+          
+          Download the bundle files directly from this release or from the repository root.
+          "
+          
+          # Create the release with the bundle files
+          gh release create ${{ steps.version.outputs.VERSION }} \
+            serverless-client.mjs \
+            serverless-client.umd.js \
+            --title "Release ${{ steps.version.outputs.VERSION }}" \
+            --notes "$RELEASE_NOTES" \
+            --target $COMMIT_SHA

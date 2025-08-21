@@ -1,0 +1,14 @@
+{
+  "name": "serverless-client",
+  "version": "1.0.0",
+  "description": "Serverless Client Library",
+  "main": "dist/serverless-client.umd.js",
+  "module": "dist/serverless-client.mjs",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  }
+}
